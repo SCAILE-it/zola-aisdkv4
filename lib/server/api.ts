@@ -2,6 +2,11 @@ import { createClient } from "@/lib/supabase/server"
 import { createGuestServerClient } from "@/lib/supabase/server-guest"
 import { isSupabaseEnabled } from "../supabase/config"
 import type { Database } from "@/app/types/database.types"
+import {
+  ensureBypassUserExists,
+  isTestAuthBypass,
+  resolveBypassUserId,
+} from "../../shared-v5-ready/auth-bypass/bypass"
 
 /**
  * Validates the user's identity
@@ -13,24 +18,22 @@ export async function validateUserIdentity(
   userId: string,
   isAuthenticated: boolean,
   req?: Request
-) {
+): Promise<import("@/app/types/api.types").SupabaseClientType | null> {
   if (!isSupabaseEnabled) {
     return null
   }
 
-  const bypassToken = process.env.TEST_AUTH_BYPASS_TOKEN
-  const requestToken = req?.headers.get("x-test-auth-token")
+  if (isTestAuthBypass(req)) {
+    const resolvedUserId = resolveBypassUserId(userId)
+    if (!resolvedUserId) {
+      throw new Error(
+        "TEST_AUTH_BYPASS_TOKEN detected but no user id provided. Set TEST_AUTH_BYPASS_USER_ID or include userId in the request payload."
+      )
+    }
 
-  if (
-    bypassToken &&
-    requestToken &&
-    requestToken === bypassToken &&
-    userId &&
-    isAuthenticated
-  ) {
     const { createServerClient } = await import("@supabase/ssr")
 
-    return createServerClient<Database>(
+    const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE!,
       {
@@ -43,6 +46,10 @@ export async function validateUserIdentity(
         },
       }
     )
+
+    await ensureBypassUserExists(supabase, resolvedUserId)
+
+    return supabase
   }
 
   const supabase = isAuthenticated

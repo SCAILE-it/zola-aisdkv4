@@ -1,3 +1,4 @@
+import type { SupabaseClientType } from "@/app/types/api.types"
 import { NextRequest, NextResponse } from "next/server"
 
 import {
@@ -11,6 +12,10 @@ import { validateUserIdentity } from "@/lib/server/api"
 import { getEffectiveApiKey } from "@/lib/user-keys"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import type { ProviderWithoutOllama } from "@/lib/user-keys"
+import {
+  isTestAuthBypass,
+  resolveBypassUserId,
+} from "@/shared-v5-ready/auth-bypass/bypass"
 
 export const maxDuration = 300 // 5 minutes for bulk processing
 
@@ -75,11 +80,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Model selection required" }, { status: 400 })
     }
 
-    const supabase = await validateUserIdentity(
+    const supabase = (await validateUserIdentity(
       userId,
       Boolean(isAuthenticated),
       req
-    )
+    )) as SupabaseClientType | null
 
     if (!supabase) {
       return NextResponse.json(
@@ -88,7 +93,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const effectiveUserId = userId ?? (await supabase.auth.getUser()).data.user?.id
+    const effectiveUserId = isTestAuthBypass(req)
+      ? resolveBypassUserId(userId)
+      : userId ?? (await supabase.auth.getUser()).data.user?.id
 
     if (!effectiveUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })

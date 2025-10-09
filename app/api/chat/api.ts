@@ -11,6 +11,7 @@ import { sanitizeUserInput } from "@/lib/sanitize"
 import { validateUserIdentity } from "@/lib/server/api"
 import { checkUsageByModel, incrementUsage } from "@/lib/usage"
 import { getUserKey, type ProviderWithoutOllama } from "@/lib/user-keys"
+import { isTestAuthBypass } from "@/shared-v5-ready/auth-bypass/bypass"
 
 export async function validateAndTrackUsage({
   userId,
@@ -18,8 +19,30 @@ export async function validateAndTrackUsage({
   isAuthenticated,
   request,
 }: ChatApiParams): Promise<SupabaseClientType | null> {
-  const supabase = await validateUserIdentity(userId, isAuthenticated, request)
-  if (!supabase) return null
+  console.log('validateAndTrackUsage called:', { userId, model, isAuthenticated })
+
+  let supabase
+  try {
+    supabase = await validateUserIdentity(userId, isAuthenticated, request)
+  } catch (error) {
+    console.error('validateUserIdentity error:', error)
+    return null
+  }
+  
+  if (!supabase) {
+    console.log('No supabase client returned from validateUserIdentity')
+    return null
+  }
+
+  const isBypass = isTestAuthBypass(request)
+
+  if (isBypass) {
+    console.log(
+      "Bypass token detected – skipping usage and entitlement checks for user:",
+      userId
+    )
+    return supabase
+  }
 
   // Check if user is authenticated
   if (!isAuthenticated) {
