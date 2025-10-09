@@ -82,6 +82,46 @@ function extractMetaDescription(html: string): string {
   }
 }
 
+const AnalyzeWebsiteInputSchema = z.object({
+  url: z.string().describe("The website URL to analyze (e.g., 'example.com' or 'https://example.com')"),
+  focus: z
+    .enum(["general", "gtm_strategy", "tech_stack", "competitive_analysis"])
+    .optional()
+    .default("general")
+    .describe("What aspect to focus the analysis on"),
+})
+
+const AnalysisSchema = z.object({
+  domain: z.string(),
+  title: z.string(),
+  description: z.string(),
+  content_preview: z.string(),
+  analysis_prompt: z.string(),
+  focus: z.string(),
+  analyzed_at: z.string(),
+})
+
+const AnalyzeWebsiteSuccessSchema = z.object({
+  success: z.literal(true),
+  domain: z.string(),
+  title: z.string(),
+  description: z.string(),
+  analysis: AnalysisSchema,
+  message: z.string(),
+  analysisPrompt: z.string(),
+})
+
+const AnalyzeWebsiteFailureSchema = z.object({
+  success: z.literal(false),
+  message: z.string(),
+  url: z.string().optional(),
+})
+
+const AnalyzeWebsiteOutputSchema = z.discriminatedUnion("success", [
+  AnalyzeWebsiteSuccessSchema,
+  AnalyzeWebsiteFailureSchema,
+])
+
 export const createAnalyzeWebsiteTool = (
   supabase: SupabaseClient<Database>,
   userId: string
@@ -90,14 +130,11 @@ export const createAnalyzeWebsiteTool = (
     description: `Analyze a website to extract business context: company information, industry, value proposition, business model.
     Use this when the user mentions a website/company and you need to understand their business for GTM analysis.
     Results are stored for future reference in GTM Expert tool.`,
-    parameters: z.object({
-      url: z.string().describe("The website URL to analyze (e.g., 'example.com' or 'https://example.com')"),
-      focus: z
-        .enum(["general", "gtm_strategy", "tech_stack", "competitive_analysis"])
-        .optional()
-        .default("general")
-        .describe("What aspect to focus the analysis on"),
-    }),
+    // @ts-expect-error: Keep `parameters` until all callsites adopt `inputSchema`.
+    inputSchema: AnalyzeWebsiteInputSchema,
+    parameters: AnalyzeWebsiteInputSchema,
+    // @ts-expect-error: `outputSchema` is part of the v5 tool builder API.
+    outputSchema: AnalyzeWebsiteOutputSchema,
     execute: async ({ url, focus = "general" }) => {
       try {
         // Fetch website content
@@ -184,6 +221,14 @@ Provide a concise, structured analysis suitable for GTM strategy development.`
         }
       }
     },
+    onError: ({ error, input }) => ({
+      success: false,
+      message:
+        error instanceof Error
+          ? `Failed to analyze website: ${error.message}`
+          : "Website analysis encountered an unexpected error.",
+      url: typeof input?.url === "string" ? input.url : undefined,
+    }),
   })
 }
 

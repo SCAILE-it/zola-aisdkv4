@@ -8,7 +8,12 @@ import {
   generateExecutionPlan,
 } from "@/lib/bulk-processing/processor"
 import { MODEL_DEFAULT } from "@/lib/config"
-import type { PlanStage, ErrorStage } from "./heavy-tool/types"
+import type {
+  CompleteStage,
+  ErrorStage,
+  ExecutingStage,
+  PlanStage,
+} from "./heavy-tool/types"
 
 const ToolParamsSchema = z.object({
   stage: z.enum(["plan", "execute"]).default("plan"),
@@ -30,14 +35,82 @@ const ToolParamsSchema = z.object({
   refinements: z.string().optional(),
 })
 
+const StageBaseSchema = z.object({
+  toolName: z.string(),
+  timestamp: z.string(),
+  metadata: z.record(z.unknown()).optional(),
+})
+
+const PlanStageSchema = StageBaseSchema.extend({
+  type: z.literal("plan"),
+  markdown: z.string(),
+  csvPreview: z
+    .object({
+      headers: z.array(z.string()),
+      sampleRows: z.array(z.array(z.string())),
+      totalRows: z.number(),
+    })
+    .optional(),
+  estimates: z.object({
+    cost: z.number(),
+    time: z.string(),
+    rowsToProcess: z.number(),
+  }),
+})
+
+const ExecutingStageSchema = StageBaseSchema.extend({
+  type: z.literal("executing"),
+  executionId: z.string(),
+  mode: z.enum(["sample", "full"]),
+  progress: z.object({
+    current: z.number(),
+    total: z.number(),
+    currentRow: z.string().optional(),
+  }),
+})
+
+const CompleteStageSchema = StageBaseSchema.extend({
+  type: z.literal("complete"),
+  executionId: z.string(),
+  summary: z.object({
+    totalProcessed: z.number(),
+    successful: z.number(),
+    failed: z.number(),
+    totalCost: z.number(),
+  }),
+  downloadUrl: z.string(),
+})
+
+const ErrorStageSchema = StageBaseSchema.extend({
+  type: z.literal("error"),
+  error: z.string(),
+  canRetry: z.boolean(),
+})
+
+const BulkProcessResultSchema = z.object({
+  stage: z.union([
+    PlanStageSchema,
+    ExecutingStageSchema,
+    CompleteStageSchema,
+    ErrorStageSchema,
+  ]),
+})
+
 export const createBulkProcessTool = (
   supabase: SupabaseClient<Database>,
   userId: string
 ) => {
+  const inputSchema = ToolParamsSchema
+  const outputSchema = BulkProcessResultSchema
+
   return tool({
     description:
       "Generate and execute a bulk processing plan against a CSV file. Produces a plan with validation, sample prompts, and execution estimates.",
-    parameters: ToolParamsSchema,
+    // @ts-expect-error: `inputSchema` is the v5 property; keep `parameters` for backwards compatibility until all callsites move over.
+    inputSchema,
+    parameters: inputSchema,
+    // @ts-expect-error: `outputSchema` is available in the v5 tool builder API.
+    outputSchema,
     execute: async ({ stage, csvUrl, csvContent, promptTemplate, model, mode, refinements }) => {
       if (stage === "plan") {
         try {
@@ -165,6 +238,20 @@ export const createBulkProcessTool = (
             mode: mode ?? "full",
           },
         },
+      }
+    },
+    onError: ({ error }) => {
+      const message =
+        error instanceof Error ? error.message : "Bulk processing tool encountered an unexpected error."
+
+      return {
+        stage: {
+          type: "error",
+          toolName: "bulk_process",
+          timestamp: new Date().toISOString(),
+          error: message,
+          canRetry: false,
+        } satisfies ErrorStage,
       }
     },
   })

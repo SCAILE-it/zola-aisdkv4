@@ -103,6 +103,83 @@ const NEGATIVE_DOMAIN_HINTS = [
   "medium.com/@",
 ]
 
+const DeepResearchInputSchema = z.object({
+  question: z
+    .string()
+    .min(4)
+    .describe(
+      "The research question to investigate (e.g., 'State of AI chip supply chain in 2025')."
+    ),
+  context: z
+    .string()
+    .optional()
+    .describe(
+      "Optional business or website context to ground the answer when the user says 'we/our/company'."
+    ),
+  conversation: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant", "system"]),
+        content: z.string(),
+      })
+    )
+    .optional()
+    .describe(
+      "Optional prior conversation messages to provide additional context for the research model."
+    ),
+})
+
+const UsageMetadataSchema = z
+  .object({
+    promptTokenCount: z.number().optional(),
+    candidatesTokenCount: z.number().optional(),
+    totalTokenCount: z.number().optional(),
+  })
+  .nullable()
+  .optional()
+
+const CitationSchema = z
+  .object({
+    title: z.string().optional(),
+    url: z.string().optional(),
+    description: z.string().nullable().optional(),
+    originalUrl: z.string().nullable().optional(),
+    verified: z.boolean().optional(),
+    verificationStatus: z.enum(["valid", "warning", "failed"]).optional(),
+    verificationDetails: z
+      .object({
+        urlAccessible: z.boolean().optional(),
+        httpStatus: z.number().nullable().optional(),
+        contentRelevant: z.boolean().nullable().optional(),
+        confidence: z.number().optional(),
+        issues: z.array(z.string()).optional(),
+      })
+      .optional(),
+  })
+  .passthrough()
+
+const DeepResearchSuccessSchema = z.object({
+  success: z.literal(true),
+  answer: z.string().optional(),
+  citations: z.array(CitationSchema),
+  metadata: z.object({
+    model: z.string(),
+    groundingSupports: z.number().optional(),
+    searchQueries: z.array(z.string()),
+    usage: UsageMetadataSchema,
+  }),
+})
+
+const DeepResearchFailureSchema = z.object({
+  success: z.literal(false),
+  message: z.string(),
+})
+
+const DeepResearchOutputSchema = z.discriminatedUnion("success", [
+  DeepResearchSuccessSchema,
+  DeepResearchFailureSchema,
+])
+
 export const createDeepResearchTool = (
   options: DeepResearchToolOptions = {}
 ) => {
@@ -110,31 +187,11 @@ export const createDeepResearchTool = (
     description: `Perform a comprehensive deep research workflow with verified citations using Google search grounding.
 Use this when the user needs a thorough analysis that goes beyond a single web search.
 Ideal for competitive intelligence, market analysis, and multi-part strategic research.`,
-    parameters: z.object({
-      question: z
-        .string()
-        .min(4)
-        .describe(
-          "The research question to investigate (e.g., 'State of AI chip supply chain in 2025')."
-        ),
-      context: z
-        .string()
-        .optional()
-        .describe(
-          "Optional business or website context to ground the answer when the user says 'we/our/company'."
-        ),
-      conversation: z
-        .array(
-          z.object({
-            role: z.enum(["user", "assistant", "system"]),
-            content: z.string(),
-          })
-        )
-        .optional()
-        .describe(
-          "Optional prior conversation messages to provide additional context for the research model."
-        ),
-    }),
+    // @ts-expect-error: `inputSchema` is the preferred v5 property; `parameters` remains for backwards compatibility.
+    inputSchema: DeepResearchInputSchema,
+    parameters: DeepResearchInputSchema,
+    // @ts-expect-error: `outputSchema` is part of the v5 tool builder API.
+    outputSchema: DeepResearchOutputSchema,
     execute: async ({ question, context, conversation }) => {
       const geminiApiKey = options.apiKey || process.env.GEMINI_API_KEY
 
@@ -202,6 +259,13 @@ Ideal for competitive intelligence, market analysis, and multi-part strategic re
         }
       }
     },
+    onError: ({ error }) => ({
+      success: false,
+      message:
+        error instanceof Error
+          ? `Deep research failed: ${error.message}`
+          : "Deep research encountered an unexpected error.",
+    }),
   })
 }
 
