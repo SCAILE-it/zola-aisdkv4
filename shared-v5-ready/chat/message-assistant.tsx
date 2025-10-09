@@ -22,6 +22,7 @@ import { SearchImages } from "./search-images"
 import { SourcesList } from "./sources-list"
 import { ToolInvocation } from "./tool-invocation"
 import { useAssistantMessageSelection } from "./useAssistantMessageSelection"
+import type { WebSearchResult } from "@/lib/tools/web-search"
 
 type MessageAssistantProps = {
   children: string
@@ -71,6 +72,26 @@ export function MessageAssistant({
       )
       .flatMap((part: any) => part.output?.content?.[0]?.results ?? []) ?? []
 
+const webSearchResults: WebSearchResult[] =
+  parts
+    ?.filter(
+      (part: any) =>
+        part.type?.startsWith("tool-") &&
+        part.state === "result" &&
+        part.toolName === "web_search"
+    )
+    .flatMap((part: any) => {
+      const payload = Array.isArray(part.output?.content)
+        ? part.output?.content.find((item: any) => item.type === "json")?.json
+        : null
+
+      if (!payload || payload.success !== true || !Array.isArray(payload.results)) {
+        return []
+      }
+
+      return payload.results as WebSearchResult[]
+    }) ?? []
+
   const isQuoteEnabled = !preferences.multiModelEnabled
   const messageRef = useRef<HTMLDivElement>(null)
   const { selectionInfo, clearSelection } = useAssistantMessageSelection(
@@ -116,6 +137,38 @@ export function MessageAssistant({
         {searchImageResults.length > 0 && (
           <SearchImages results={searchImageResults} />
         )}
+
+      {webSearchResults.length > 0 && (
+        <div className="space-y-2 rounded-lg border border-border bg-muted/40 p-4">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            Web Results
+          </p>
+          <ul className="space-y-3">
+            {webSearchResults.map((result, index) => (
+              <li key={`${result.url ?? "result"}-${index}`} className="space-y-1">
+                {result.title ? (
+                  <a
+                    href={result.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    {result.title}
+                  </a>
+                ) : null}
+                {result.snippet ? (
+                  <p className="text-sm text-muted-foreground">{result.snippet}</p>
+                ) : null}
+                <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                  {result.url ? <span className="truncate font-mono">{result.url}</span> : null}
+                  {result.source ? <span>Source: {result.source}</span> : null}
+                  {result.publishedAt ? <span>Published: {result.publishedAt}</span> : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
         {contentNullOrEmpty ? null : (
           <MessageContent
