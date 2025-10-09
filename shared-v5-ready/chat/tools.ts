@@ -1,9 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { ToolSet } from "ai"
-import type { Database } from "../../app/types/database.types"
-import { createBulkProcessTool } from "../../lib/tools/bulk-process-tool"
-import { createAnalyzeWebsiteTool } from "../../lib/tools/analyze-website"
-import { createDeepResearchTool } from "../../lib/tools/deep-research"
+import type { Database } from "@/app/types/database.types"
+import { createBulkProcessTool } from "@/lib/tools/bulk-process-tool"
+import { createAnalyzeWebsiteTool } from "@/lib/tools/analyze-website"
+import { createDeepResearchTool } from "@/lib/tools/deep-research"
 
 export type BaseAgentTools = {
   bulk_process?: ToolSet[string]

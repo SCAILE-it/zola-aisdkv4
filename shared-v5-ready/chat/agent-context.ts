@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { ToolSet } from "ai"
-import type { Database } from "../../app/types/database.types"
-import { SYSTEM_PROMPT_DEFAULT } from "../../lib/config"
-import { createClient as createSupabaseClient } from "../../lib/supabase/server"
+import type { Database } from "@/app/types/database.types"
+import { SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
+import { createClient as createSupabaseClient } from "@/lib/supabase/server"
 import { buildAgentToolsV5 } from "./tools"
 
 export type BuildAgentToolsOptions = {

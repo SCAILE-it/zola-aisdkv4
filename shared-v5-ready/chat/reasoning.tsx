@@ -1,0 +1,62 @@
+"use client"
+
+import { Markdown } from "@/components/prompt-kit/markdown"
+import { cn } from "@/lib/utils"
+import { CaretDown } from "@phosphor-icons/react"
+import { AnimatePresence, motion } from "framer-motion"
+import { useState } from "react"
+
+type ReasoningProps = {
+  reasoningText: string
+  isStreaming?: boolean
+}
+
+const TRANSITION = {
+  type: "spring" as const,
+  duration: 0.2,
+  bounce: 0,
+}
+
+export function Reasoning({ reasoningText, isStreaming }: ReasoningProps) {
+  const [wasStreaming, setWasStreaming] = useState(isStreaming ?? false)
+  const [isExpanded, setIsExpanded] = useState(() => isStreaming ?? true)
+
+  if (wasStreaming && isStreaming === false) {
+    setWasStreaming(false)
+    setIsExpanded(false)
+  }
+
+  return (
+    <div>
+      <button
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+        type="button"
+      >
+        <span>Reasoning</span>
+        <CaretDown
+          className={cn(
+            "size-3 transition-transform",
+            isExpanded ? "rotate-180" : ""
+          )}
+        />
+      </button>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            className="mt-2 overflow-hidden"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={TRANSITION}
+          >
+            <div className="text-muted-foreground border-muted-foreground/20 flex flex-col border-l pl-4 text-sm">
+              <Markdown>{reasoningText}</Markdown>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}

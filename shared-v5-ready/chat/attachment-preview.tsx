@@ -1,4 +1,4 @@
-import type { Message as MessageType } from "@ai-sdk/react"
+import type { Attachment } from "../lib/message-utils"
 import {
   DownloadSimple,
   FileCsv,
@@ -9,8 +9,6 @@ import {
   Paperclip,
 } from "@phosphor-icons/react"
 import Link from "next/link"
-
-type Attachment = NonNullable<MessageType["experimental_attachments"]>[number]
 
 type AttachmentPreviewListProps = {
   attachments?: Attachment[]

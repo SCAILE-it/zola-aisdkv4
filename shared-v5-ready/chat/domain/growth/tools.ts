@@ -1,7 +1,6 @@
-import type { ToolSet } from "ai"
-import type { BuildAgentToolsV5Options } from "../../chat/tools"
+import { createGtmExpertTool } from "@/lib/tools/gtm-expert"
+import type { BuildAgentToolsV5Options } from "../../tools"
 import { buildBaseTools } from "../../chat/tools"
-import { createGtmExpertTool } from "../../../lib/tools/gtm-expert"
 
 export function buildGrowthTools(options: BuildAgentToolsV5Options): ToolSet {
   const { supabase, userId } = options
