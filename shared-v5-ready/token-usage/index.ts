@@ -1,5 +1,9 @@
-export { createTokenUsageRecorder } from "./recorder"
+export {
+  createTokenUsageHooks,
+  createTokenUsageRecorder,
+} from "./recorder"
 export type {
+  TokenUsageHooks,
   TokenUsageRecorder,
   TokenUsageRecorderOptions,
   TokenUsageMetrics,

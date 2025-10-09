@@ -1,6 +1,6 @@
 import type { SupabaseClientType } from "@/app/types/api.types"
 import { getAllModels } from "@/lib/models"
-import { createTokenUsageRecorder } from "@/shared-v5-ready/token-usage"
+import { createTokenUsageHooks } from "@/shared-v5-ready/token-usage"
 import { streamText } from "ai"
 
 export type CsvRow = Record<string, string>
@@ -122,6 +122,14 @@ export async function processBulkCSV(
       // Replace template variables
       const prompt = replaceTemplateVariables(promptTemplate, row)
 
+      const tokenUsage = createTokenUsageHooks({
+        supabase,
+        userId,
+        chatId,
+        model,
+        actionType: "bulk_process",
+      })
+
       // Call AI with the personalized prompt
       const response = await streamText({
         model: modelConfig.apiSdk(apiKey),
@@ -142,21 +150,14 @@ export async function processBulkCSV(
 
       // Get usage info
       const usage = await response.usage
+      const finalResponse = await response.response
 
       // Track tokens
       if (usage) {
         result.totalTokens += usage.totalTokens
-
-        const recordUsage = createTokenUsageRecorder({
-          supabase,
-          userId,
-          chatId,
-          model,
-          actionType: "bulk_process",
-        })
-
-        await recordUsage(usage)
       }
+
+      await tokenUsage.onFinish({ usage, response: finalResponse })
 
       result.results.push({
         rowIndex: i,

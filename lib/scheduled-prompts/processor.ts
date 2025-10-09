@@ -2,7 +2,7 @@ import { streamText } from "ai"
 import { SupabaseClient } from "@supabase/supabase-js"
 import { Database } from "@/app/types/database.types"
 import { getAllModels } from "@/lib/models"
-import { createTokenUsageRecorder } from "@/shared-v5-ready/token-usage"
+import { createTokenUsageHooks } from "@/shared-v5-ready/token-usage"
 import { createGtmExpertTool } from "@/lib/tools/gtm-expert"
 import { createAnalyzeWebsiteTool } from "@/lib/tools/analyze-website"
 
@@ -49,6 +49,14 @@ export async function executeScheduledPrompt(
       analyze_website: createAnalyzeWebsiteTool(supabase, prompt.user_id),
     }
 
+    const tokenUsage = createTokenUsageHooks({
+      supabase,
+      userId: prompt.user_id,
+      chatId: prompt.id,
+      model,
+      actionType: "scheduled_prompt",
+    })
+
     // Execute prompt with AI
     const response = await streamText({
       model: modelConfig.apiSdk(),
@@ -70,19 +78,10 @@ export async function executeScheduledPrompt(
 
     // Get usage
     const usage = await response.usage
+    const finalResponse = await response.response
 
     // Track tokens
-    if (usage) {
-      const recordUsage = createTokenUsageRecorder({
-        supabase,
-        userId: prompt.user_id,
-        chatId: prompt.id,
-        model,
-        actionType: "scheduled_prompt",
-      })
-
-      await recordUsage(usage)
-    }
+    await tokenUsage.onFinish({ usage, response: finalResponse })
 
     return {
       success: true,

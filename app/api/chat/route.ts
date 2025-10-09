@@ -2,8 +2,13 @@ import { FEATURE_FLAGS, SYSTEM_PROMPT_DEFAULT } from "@/lib/config"
 import { getAllModels } from "@/lib/models"
 import { getProviderForModel } from "@/lib/openproviders/provider-map"
 import type { ProviderWithoutOllama } from "@/lib/user-keys"
-import { Attachment } from "@ai-sdk/ui-utils"
-import { Message as MessageAISDK, streamText, ToolSet } from "ai"
+import {
+  convertToModelMessages,
+  streamText,
+  type FileUIPart,
+  type ToolSet,
+  type UIMessage,
+} from "ai"
 import {
   incrementMessageCount,
   logUserMessage,
@@ -15,12 +20,17 @@ import { createGtmExpertTool } from "@/lib/tools/gtm-expert"
 import { createAnalyzeWebsiteTool } from "@/lib/tools/analyze-website"
 import { createBulkProcessTool } from "@/lib/tools/bulk-process-tool"
 import { createDeepResearchTool } from "@/lib/tools/deep-research"
-import { createTokenUsageRecorder } from "@/shared-v5-ready/token-usage"
+import { createTokenUsageHooks } from "@/shared-v5-ready/token-usage"
+import {
+  filePartsToAttachments,
+  getFileParts,
+  getTextContent,
+} from "@/lib/message-utils"
 
 export const maxDuration = 60
 
 type ChatRequest = {
-  messages: MessageAISDK[]
+  messages: UIMessage[]
   chatId: string
   userId: string
   model: string
@@ -65,12 +75,15 @@ export async function POST(req: Request) {
     const userMessage = messages[messages.length - 1]
 
     if (supabase && userMessage?.role === "user") {
+      const textContent = getTextContent(userMessage)
+      const fileParts = getFileParts(userMessage) as FileUIPart[]
+
       await logUserMessage({
         supabase,
         userId,
         chatId,
-        content: userMessage.content,
-        attachments: userMessage.experimental_attachments as Attachment[],
+        content: textContent,
+        attachments: filePartsToAttachments(fileParts),
         model,
         isAuthenticated,
         message_group_id,
@@ -108,28 +121,27 @@ export async function POST(req: Request) {
       }
     }
 
+    const modelMessages = convertToModelMessages(messages)
+
+    const tokenUsage = createTokenUsageHooks({
+      supabase,
+      userId,
+      chatId,
+      model,
+      actionType: "message",
+    })
+
     const result = streamText({
-      model: modelConfig.apiSdk(apiKey, { enableSearch: true }),
-      system: effectiveSystemPrompt,
-      messages: messages,
+      model: modelConfig.apiSdk(apiKey, { enableSearch: enableSearch ?? true }),
+      system: systemPrompt || SYSTEM_PROMPT_DEFAULT,
+      messages: modelMessages,
       tools,
-      maxSteps: 10,
       onError: (err: unknown) => {
         console.error("Streaming error occurred:", err)
-        // Don't set streamError anymore - let the AI SDK handle it through the stream
       },
 
       onFinish: async ({ response, usage }) => {
         if (supabase) {
-          const recordUsage = createTokenUsageRecorder({
-            supabase,
-            userId,
-            chatId,
-            model,
-            actionType: "message",
-          })
-
-          // Store assistant message
           await storeAssistantMessage({
             supabase,
             chatId,
@@ -138,17 +150,17 @@ export async function POST(req: Request) {
             message_group_id,
             model,
           })
-
-          // Track token usage
-          await recordUsage(usage)
         }
+
+        await tokenUsage.onFinish({ usage, response })
       },
     })
 
-    return result.toDataStreamResponse({
+    return result.toUIMessageStreamResponse({
       sendReasoning: true,
       sendSources: true,
-      getErrorMessage: (error: unknown) => {
+      messageMetadata: tokenUsage.messageMetadata,
+      onError: (error: unknown) => {
         console.error("Error forwarded to client:", error)
         return extractErrorMessage(error)
       },
