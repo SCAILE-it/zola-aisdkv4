@@ -1,9 +1,20 @@
+/**
+ * Conversation renderer recap:
+ *
+ * - Consumes `AppMessage` objects returned by the shared `useChatCore` hook and
+ *   always derives text/attachments from `UIMessage.parts` (v5-first).
+ * - Legacy `experimental_attachments` is treated as a fallback only when parts
+ *   are missing – handy while app code still migrates its storage layer.
+ * - When the shared hook enqueues optimistic messages, file tiles remain visible
+ *   because `getFileParts` reads the synthetic file parts we attach in the hook.
+ */
 import {
   ChatContainerContent,
   ChatContainerRoot,
 } from "@/components/prompt-kit/chat-container"
 import { Loader } from "@/components/prompt-kit/loader"
 import { ScrollButton } from "@/components/prompt-kit/scroll-button"
+import { filePartsToAttachments, getFileParts, getTextContent } from "../lib/message-utils"
 import type { AppMessage } from "../lib/message-utils"
 import { useRef } from "react"
 import { Message } from "./message"
@@ -49,6 +60,16 @@ export function Conversation({
             const isLast = index === messages.length - 1 && status !== "submitted"
             const hasScrollAnchor =
               isLast && messages.length > initialMessageCount.current
+            const fallbackText = getTextContent(message)
+            const text =
+              fallbackText.length > 0 ? fallbackText : message.content ?? ""
+            const legacyAttachments = message.experimental_attachments ?? []
+            const derivedAttachments =
+              legacyAttachments.length > 0
+                ? legacyAttachments
+                : filePartsToAttachments(getFileParts(message))
+            const attachments =
+              derivedAttachments.length > 0 ? derivedAttachments : undefined
 
             return (
               <Message
@@ -64,9 +85,9 @@ export function Conversation({
                 status={status}
                 className="w-full"
                 onQuote={onQuote}
-                attachments={message.experimental_attachments}
+                attachments={attachments}
               >
-                {message.content ?? ""}
+                {text}
               </Message>
             )
           })}

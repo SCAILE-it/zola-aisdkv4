@@ -1,3 +1,18 @@
+/**
+ * Architecture briefing (v1 handoff):
+ *
+ * - This hook is the production entry point for the shared v5 chat layer. It wraps
+ *   ai-sdk v5 with all app behaviors intact (guest provisioning, rate limits,
+ *   Supabase prompt queue, search toggle, suggestions, draft persistence, etc.).
+ * - Optimistic user messages now ship `parts` plus `experimental_attachments`, so
+ *   downstream renderers can keep file previews visible while uploads/queue jobs
+ *   settle.
+ * - `pendingQueueJobs` exposes queue status + cancel handlers for the prompt list UI;
+ *   pair with `shared-v5-ready/chat/prompt-queue-list.tsx` when wiring the app shell.
+ * - Text and attachment rendering lives in `shared-v5-ready/chat/conversation.tsx`
+ *   using `getTextContent`/`filePartsToAttachments`, so anything consuming this hook
+ *   should rely on `UIMessage.parts` first and treat legacy fields as optional.
+ */
 import { useChatDraft } from "@/app/hooks/use-chat-draft"
 import { toast } from "@/components/ui/toast"
 import { getOrCreateGuestUserId } from "@/lib/api"
@@ -226,6 +241,8 @@ export function useChatCore({
       parts,
       createdAt: new Date(),
       content: input,
+      experimental_attachments:
+        optimisticAttachments.length > 0 ? optimisticAttachments : undefined,
     }
 
     setMessages((prev) => [...prev, optimisticMessage])
