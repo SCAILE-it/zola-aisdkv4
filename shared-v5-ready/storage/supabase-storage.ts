@@ -1,6 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
 import type { Database } from "../../app/types/database.types"
 
+/**
+ * Centralized Supabase storage helpers for chat attachments.
+ *
+ * Keep this module as the single source of truth for:
+ * - Bucket name and path conventions used by client/upload flows.
+ * - Metadata persistence in `chat_attachments` (see migrations for schema + RLS).
+ * - Inline guidance on the Supabase-side setup our teammates need during handoffs.
+ */
+
 type UploadParams = {
   supabase: SupabaseClient<Database>
   file: File
@@ -36,6 +45,7 @@ type RecordParams = {
   fileName: string
   fileType: string
   fileSize: number
+  storagePath: string
 }
 
 export async function recordFileMetadata({
@@ -46,6 +56,7 @@ export async function recordFileMetadata({
   fileName,
   fileType,
   fileSize,
+  storagePath,
 }: RecordParams) {
   const { error } = await supabase.from("chat_attachments").insert({
     chat_id: chatId,
@@ -54,6 +65,7 @@ export async function recordFileMetadata({
     file_name: fileName,
     file_type: fileType,
     file_size: fileSize,
+    storage_path: storagePath,
   })
 
   if (error) {
@@ -71,6 +83,7 @@ export const CHAT_ATTACHMENT_BUCKET: BucketInfo = {
   suggestedPolicies: [
     "Allow uploads for authenticated users",
     "Allow public read access to chat attachments",
+    "SQL reference: see supabase/migrations/* for RLS (select/insert scoped to auth.uid())",
   ],
 }
 

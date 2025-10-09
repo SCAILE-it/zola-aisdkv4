@@ -1,13 +1,7 @@
 import type { UIMessage, ReasoningUIPart, FileUIPart } from "ai"
+import type { Attachment } from "./file-handling"
 
-export type { ReasoningUIPart, FileUIPart }
-
-export interface Attachment {
-  name: string
-  contentType: string
-  url: string
-  storagePath?: string
-}
+export type { ReasoningUIPart, FileUIPart } from "ai"
 
 export interface DatabaseMessage {
   id: string | number
@@ -37,14 +31,6 @@ export interface ToolInvocationPart {
   errorText?: string
 }
 
-export interface AppMessage extends UIMessage {
-  createdAt?: Date
-  message_group_id?: string
-  model?: string
-  content?: string | null
-  experimental_attachments?: Attachment[]
-}
-
 export function convertAttachmentsToFileUIParts(
   attachments: Attachment[]
 ): FileUIPart[] {
@@ -54,6 +40,29 @@ export function convertAttachmentsToFileUIParts(
     filename: attachment.name,
     url: attachment.url,
   }))
+}
+
+export interface AppMessage extends UIMessage {
+  createdAt?: Date
+  message_group_id?: string
+  model?: string
+}
+
+export function getTextContent(message: UIMessage): string {
+  if (!message.parts || message.parts.length === 0) {
+    return ""
+  }
+
+  const textParts = message.parts.filter((part: any) => part.type === "text")
+  return textParts.map((part: any) => part.text || "").join("")
+}
+
+export function getFileParts(message: UIMessage): any[] {
+  if (!message.parts || message.parts.length === 0) {
+    return []
+  }
+
+  return message.parts.filter((part: any) => part.type === "file")
 }
 
 export function filePartsToAttachments(
@@ -67,37 +76,18 @@ export function filePartsToAttachments(
   }))
 }
 
-export function getTextContent(message: UIMessage): string {
-  if (!message.parts || message.parts.length === 0) {
-    return ""
-  }
-
-  return message.parts
-    .filter((part: any) => part.type === "text")
-    .map((part: any) => part.text || "")
-    .join("")
-}
-
-export function getFileParts(message: UIMessage): FileUIPart[] {
-  if (!message.parts || message.parts.length === 0) {
-    return []
-  }
-
-  return message.parts.filter((part: any) => part.type === "file")
-}
-
 export function uiMessageToDb(
   message: AppMessage,
   chatId: string
 ): Omit<DatabaseMessage, "id"> {
-  const textContent = message.content ?? getTextContent(message)
+  const textContent = getTextContent(message)
   const fileParts = getFileParts(message)
 
   const experimentalAttachments =
     fileParts.length > 0
       ? fileParts.map((part: any) => ({
-          name: part.name || part.filename || "file",
-          contentType: part.contentType || part.mediaType || "",
+          name: part.name || "file",
+          contentType: part.contentType || part.mimeType || "",
           url: part.url || "",
           storagePath: part.storagePath || undefined,
         }))
@@ -117,6 +107,7 @@ export function uiMessageToDb(
 
 export function dbToUiMessage(dbMessage: DatabaseMessage): AppMessage {
   if (dbMessage.parts && Array.isArray(dbMessage.parts)) {
+    const textContent = extractTextFromParts(dbMessage.parts)
     return {
       id: String(dbMessage.id),
       role: dbMessage.role as "system" | "user" | "assistant",
@@ -124,12 +115,13 @@ export function dbToUiMessage(dbMessage: DatabaseMessage): AppMessage {
       createdAt: new Date(dbMessage.created_at),
       message_group_id: dbMessage.message_group_id || undefined,
       model: dbMessage.model || undefined,
-      content: getTextContent({ parts: dbMessage.parts } as UIMessage),
+      content: textContent,
       experimental_attachments:
         (dbMessage.experimental_attachments as Attachment[] | null) || undefined,
     }
   }
 
+  // Fallback: construct parts from v4 format (content + experimental_attachments)
   const parts: any[] = []
 
   if (dbMessage.content) {
@@ -153,8 +145,6 @@ export function dbToUiMessage(dbMessage: DatabaseMessage): AppMessage {
     }
   }
 
-  const textContent = dbMessage.content ?? (parts[0]?.text ?? "")
-
   return {
     id: String(dbMessage.id),
     role: dbMessage.role as "system" | "user" | "assistant",
@@ -162,16 +152,23 @@ export function dbToUiMessage(dbMessage: DatabaseMessage): AppMessage {
     createdAt: new Date(dbMessage.created_at),
     message_group_id: dbMessage.message_group_id || undefined,
     model: dbMessage.model || undefined,
-    content: textContent,
+    content: dbMessage.content || (parts[0]?.text ?? ""),
     experimental_attachments:
       (dbMessage.experimental_attachments as Attachment[] | null) || undefined,
   }
 }
 
+function extractTextFromParts(parts: any[]): string {
+  return parts
+    .filter((part: any) => part.type === "text")
+    .map((part: any) => part.text || "")
+    .join("")
+}
+
 export function createTextMessage(
   text: string,
   role: "user" | "assistant" = "user"
-): AppMessage {
+): UIMessage {
   return {
     id: `msg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     role,

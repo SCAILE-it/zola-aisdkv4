@@ -4,6 +4,7 @@ import * as fileType from "file-type"
 import { DAILY_FILE_UPLOAD_LIMIT } from "./config"
 import { createClient } from "./supabase/client"
 import { isSupabaseEnabled } from "./supabase/config"
+import { recordFileMetadata, uploadFileToBucket } from "@/shared-v5-ready/storage/supabase-storage"
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10MB
 
@@ -24,6 +25,7 @@ export type Attachment = {
   name: string
   contentType: string
   url: string
+  storagePath?: string
 }
 
 export async function validateFile(
@@ -71,34 +73,12 @@ export async function validateFile(
   return { isValid: true }
 }
 
-export async function uploadFile(
-  supabase: SupabaseClient,
-  file: File
-): Promise<string> {
-  const fileExt = file.name.split(".").pop()
-  const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`
-  const filePath = `uploads/${fileName}`
-
-  const { error } = await supabase.storage
-    .from("chat-attachments")
-    .upload(filePath, file)
-
-  if (error) {
-    throw new Error(`Error uploading file: ${error.message}`)
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("chat-attachments").getPublicUrl(filePath)
-
-  return publicUrl
-}
-
-export function createAttachment(file: File, url: string): Attachment {
+export function createAttachment(file: File, url: string, storagePath?: string): Attachment {
   return {
     name: file.name,
     contentType: file.type,
     url,
+    storagePath,
   }
 }
 
@@ -124,21 +104,30 @@ export async function processFiles(
 
     try {
       let url: string
-      
+      let storagePath: string | undefined
+
       if (supabase) {
-        url = await uploadFile(supabase, file)
-        const { error } = await supabase.from("chat_attachments").insert({
-          chat_id: chatId,
-          user_id: userId,
-          file_url: url,
-          file_name: file.name,
-          file_type: file.type,
-          file_size: file.size,
+        const pathPrefix = `chats/${chatId}/${userId}`.replace(/\s+/g, "-")
+
+        const uploadResult = await uploadFileToBucket({
+          supabase,
+          file,
+          pathPrefix,
         })
 
-        if (error) {
-          throw new Error(`Database insertion failed: ${error.message}`)
-        }
+        url = uploadResult.publicUrl
+        storagePath = uploadResult.storagePath
+
+        await recordFileMetadata({
+          supabase,
+          chatId,
+          userId,
+          fileUrl: url,
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+          storagePath,
+        })
       } else {
         // Use temporary upload endpoint for testing without Supabase
         const formData = new FormData()
@@ -157,7 +146,7 @@ export async function processFiles(
         url = tempUrl
       }
 
-      attachments.push(createAttachment(file, url))
+      attachments.push(createAttachment(file, url, storagePath))
     } catch (error) {
       console.error(`Error processing file ${file.name}:`, error)
     }
