@@ -13,6 +13,8 @@ import {
 } from "@phosphor-icons/react"
 import { AnimatePresence, motion, type Transition } from "framer-motion"
 import { useMemo, useState, type ReactNode } from "react"
+import { ToolLoadingBar } from "../tool-loading/loading-bar"
+import type { ToolLoadingBarProps } from "../tool-loading/loading-bar"
 
 interface ToolInvocationProps {
   toolInvocations: ToolInvocationPart[]
@@ -261,6 +263,16 @@ function SingleToolCard({
   const renderResults = () => {
     if (!parsedResult) return "No result data available"
 
+    if (
+      loadingBarProps &&
+      typeof parsedResult === "object" &&
+      parsedResult !== null &&
+      "stage" in (parsedResult as Record<string, unknown>) &&
+      Object.keys(parsedResult as Record<string, unknown>).length === 1
+    ) {
+      return null
+    }
+
     if (Array.isArray(parsedResult) && parsedResult.length > 0) {
       if (
         parsedResult[0] &&
@@ -350,6 +362,121 @@ function SingleToolCard({
     return "No result data available"
   }
 
+  const loadingBarProps = useMemo(() => {
+    if (!parsedResult || typeof parsedResult !== "object") return null
+
+    const stageCandidate = (parsedResult as Record<string, unknown>).stage
+    if (!stageCandidate || typeof stageCandidate !== "object") return null
+
+    const stage = stageCandidate as Record<string, any>
+    const stageType = stage.type
+    if (typeof stageType !== "string") return null
+
+    const baseProps: ToolLoadingBarProps = {
+      variant: "running",
+      title: stage.toolName ?? toolName,
+      description: stage.metadata?.description,
+    }
+
+    switch (stageType) {
+      case "plan":
+        return {
+          ...baseProps,
+          variant: "preparing",
+          title: stage.metadata?.title ?? "Preparing bulk plan",
+          description:
+            stage.metadata?.description ?? "Review the plan before running the tool.",
+          details: stage.estimates
+            ? [
+                {
+                  label: "Estimated time",
+                  value: stage.estimates.time,
+                },
+                {
+                  label: "Rows",
+                  value: String(stage.estimates.rowsToProcess),
+                },
+              ]
+            : undefined,
+        } satisfies ToolLoadingBarProps
+      case "executing": {
+        const current = Number(stage.progress?.current ?? 0)
+        const total = Number(stage.progress?.total ?? 0)
+        const percentage = total > 0 ? Math.round((current / total) * 100) : undefined
+        return {
+          ...baseProps,
+          variant: "running",
+          progress: {
+            current,
+            total: total > 0 ? total : undefined,
+            percentage,
+            label: stage.progress?.label ?? "Processing",
+          },
+          currentRow: stage.progress?.currentRow,
+        } satisfies ToolLoadingBarProps
+      }
+      case "complete":
+        const totalProcessed =
+          typeof stage.summary?.totalProcessed === "number"
+            ? stage.summary.totalProcessed
+            : Number(stage.summary?.totalProcessed ?? 0)
+        const successful =
+          typeof stage.summary?.successful === "number"
+            ? stage.summary.successful
+            : Number(stage.summary?.successful ?? 0)
+        const failed =
+          typeof stage.summary?.failed === "number"
+            ? stage.summary.failed
+            : Number(stage.summary?.failed ?? 0)
+        const totalCostValue =
+          typeof stage.summary?.totalCost === "number"
+            ? stage.summary.totalCost
+            : Number(stage.summary?.totalCost ?? 0)
+        const totalCostDisplay = Number.isFinite(totalCostValue)
+          ? `$${totalCostValue.toFixed(2)}`
+          : String(stage.summary?.totalCost ?? "-")
+
+        return {
+          ...baseProps,
+          variant: "success",
+          description: stage.summary
+            ? `Processed ${stage.summary.totalProcessed} rows`
+            : stage.metadata?.description,
+          details: stage.summary
+            ? [
+                {
+                  label: "Succeeded",
+                  value: String(successful),
+                },
+                {
+                  label: "Failed",
+                  value: String(failed),
+                },
+                {
+                  label: "Cost",
+                  value: totalCostDisplay,
+                },
+              ]
+            : undefined,
+          download: stage.downloadUrl
+            ? {
+                url: stage.downloadUrl,
+                label: stage.metadata?.downloadLabel ?? "results",
+              }
+            : undefined,
+        } satisfies ToolLoadingBarProps
+      case "error":
+        return {
+          ...baseProps,
+          variant: "error",
+          description: stage.metadata?.description ?? "The tool encountered an error.",
+          errorDetails: stage.error,
+        } satisfies ToolLoadingBarProps
+      default:
+        return null
+    }
+  }, [parsedResult, toolName])
+
   return (
     <div
       className={cn(
@@ -416,6 +543,9 @@ function SingleToolCard({
             className="overflow-hidden"
           >
             <div className="space-y-3 px-3 pt-3 pb-3">
+              {loadingBarProps ? (
+                <ToolLoadingBar {...loadingBarProps} />
+              ) : null}
               {args &&
               typeof args === "object" &&
               args !== null &&
