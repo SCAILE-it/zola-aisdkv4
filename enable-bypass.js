@@ -1,1 +1,1 @@
-document.cookie = "test_auth_bypass_token=test-local-bypass-2025; path=/";
+document.cookie = "test_auth_bypass_token=YOUR_TEST_BYPASS_TOKEN; path=/";

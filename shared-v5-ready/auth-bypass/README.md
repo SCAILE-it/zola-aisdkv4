@@ -13,7 +13,7 @@ This is the **optional** service-role bypass wired into our shared modules. It l
 Set the following env vars for whichever process launches your tests/server:
 
 ```bash
-TEST_AUTH_BYPASS_TOKEN=test-local-bypass-2025
+TEST_AUTH_BYPASS_TOKEN=YOUR_TEST_BYPASS_TOKEN
 TEST_AUTH_BYPASS_USER_ID=00000000-0000-0000-0000-000000000000
 SUPABASE_SERVICE_ROLE=your-service-role-key
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
@@ -22,7 +22,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 Then send the matching header on every request that should bypass auth:
 
 ```
-x-test-auth-token: test-local-bypass-2025
+x-test-auth-token: YOUR_TEST_BYPASS_TOKEN
 ```
 
 ## What Happens Under the Hood

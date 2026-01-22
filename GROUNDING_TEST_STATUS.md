@@ -37,14 +37,14 @@ The `/api/chat` endpoint:
 ### Environment Configuration
 To enable the bypass for testing, set:
 ```bash
-TEST_AUTH_BYPASS_TOKEN=test-local-bypass-2025
+TEST_AUTH_BYPASS_TOKEN=YOUR_TEST_BYPASS_TOKEN
 ```
 
 ### Test Request Format
 ```bash
 curl -X POST http://localhost:3030/api/chat \
   -H "Content-Type: application/json" \
-  -H "x-test-auth-token: test-local-bypass-2025" \
+  -H "x-test-auth-token: YOUR_TEST_BYPASS_TOKEN" \
   -d '{
     "messages": [{"role": "user", "content": "Your prompt here"}],
     "model": "gemini-2.5-flash",
